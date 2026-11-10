@@ -566,3 +566,17 @@ If you find a problem, feel free to create an [issue](https://github.com/inokawa
 2. Run `npm install`.
 3. Commit your fix.
 4. Make a PR and confirm all the CI checks passed.
+
+## Experimental visible-item priority
+
+This local branch adds an opt-in `prioritizeVisible` prop to React `Virtualizer` and `VList`. With a concurrent React root, visible items and previously committed items update at the normal priority; newly needed buffer items are admitted with `React.startTransition`. Explicit `keepMounted` items remain urgent. The original behavior is the default, and is also retained when React does not provide transitions.
+
+```tsx
+<VList prioritizeVisible bufferSize={1200}>
+  {rows}
+</VList>
+```
+
+The normal scroll, resize, measurement and jump-compensation paths stay in place. Deferred admission is keyed to the current store version; a newer scroll or measurement cannot use an older buffer grant. Visible items keep their keys as the buffer expands. Initial rendering, idle recovery, WindowVirtualizer, grids and masonry retain their existing behavior.
+
+This is a local prototype. Expensive row work should live in React components so concurrent rendering can yield between them. Memoized content avoids repeating visible-cell work while the buffer is added. The companion visible-content benchmark compares this option with the same source build disabled and with the upstream package. It measures DOM readiness, not presented pixels or a guarantee of preemption.

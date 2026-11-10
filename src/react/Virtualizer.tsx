@@ -1,4 +1,4 @@
-import {
+import React, {
   type JSX,
   type ReactElement,
   forwardRef,
@@ -7,6 +7,7 @@ import {
   useRef,
   type RefObject,
   useReducer,
+  useState,
   type Ref,
 } from "react";
 import {
@@ -110,6 +111,13 @@ export interface VirtualizerProps<T = unknown> {
    */
   bufferSize?: number;
   /**
+   * Experimental: commit visible items before mounting new buffer items during
+   * scrolling. Existing mounted items and keepMounted items remain urgent.
+   * Uses React transitions; children should put expensive work in components.
+   * @defaultValue false
+   */
+  prioritizeVisible?: boolean;
+  /**
    * Item size hint for unmeasured items in pixels. It will help to reduce scroll jump when items are measured if used properly.
    *
    * - If not set, initial item sizes will be automatically estimated from measured sizes. This is recommended for most cases.
@@ -185,6 +193,7 @@ export const Virtualizer = /*#__PURE__*/ forwardRef<
       children,
       data,
       bufferSize,
+      prioritizeVisible = false,
       itemSize,
       shift,
       horizontal: horizontalProp,
@@ -217,6 +226,7 @@ export const Virtualizer = /*#__PURE__*/ forwardRef<
     const onScroll = useLatestRef(onScrollProp);
     const onScrollEnd = useLatestRef(onScrollEndProp);
     const onResize = useLatestRef(onResizeProp);
+    const visiblePriority = useLatestRef(prioritizeVisible);
 
     const [store, layout, driver, isHorizontal] = useStatic(() => {
       const _isHorizontal = !!horizontalProp;
@@ -239,11 +249,19 @@ export const Virtualizer = /*#__PURE__*/ forwardRef<
       undefined,
       store.$getStateVersion,
     );
+    const [urgentVersion, setUrgentVersion] = useState(stateVersion);
+    const [bufferVersion, setBufferVersion] = useState(stateVersion);
+    const committedIndexes = useRef(new Set<number>());
 
     const isScrolling = store.$isScrolling();
     const totalSize = store.$getTotalSize();
 
     const items: ReactElement[] = [];
+    const indexes: number[] = [];
+
+    useIsomorphicLayoutEffect(() => {
+      committedIndexes.current = new Set(indexes);
+    });
 
     useIsomorphicLayoutEffect(() => {
       isSSR.current = false;
@@ -251,10 +269,24 @@ export const Virtualizer = /*#__PURE__*/ forwardRef<
       // store must be subscribed first because others may dispatch update on init depending on implementation
       const unsubscribe = store.$subscribe((flag, sync) => {
         if (flag & UPDATE_VIRTUAL_STATE) {
-          if (sync) {
-            flushSync(rerender);
-          } else {
+          const prioritize =
+            visiblePriority.current &&
+            typeof React.startTransition === "function" &&
+            store.$isScrolling();
+          const version = store.$getStateVersion();
+          const update = () => {
+            if (prioritize) setUrgentVersion(version);
             rerender();
+          };
+          if (sync) {
+            flushSync(update);
+          } else {
+            update();
+          }
+          // A synchronous geometry effect may have issued a newer update while
+          // flushSync committed. Do not enqueue its older grant afterwards.
+          if (prioritize && version === store.$getStateVersion()) {
+            React.startTransition(() => setBufferVersion(version));
           }
         }
         if (flag & UPDATE_SCROLL_EVENT) {
@@ -317,11 +349,27 @@ export const Virtualizer = /*#__PURE__*/ forwardRef<
       };
     }, []);
 
-    const indexes: number[] = [];
+    // Admission is versioned, rather than capturing mutable store geometry in a
+    // transition. An older grant cannot admit the buffer for a newer update.
+    // ResizeObserver updates still run at their native priority and compute the
+    // current visible range, including any newly exposed items.
+    const deferBuffer =
+      prioritizeVisible &&
+      isScrolling &&
+      urgentVersion === stateVersion &&
+      bufferVersion !== stateVersion;
+    // Read the full range last to leave the store's previous-range cache in its
+    // normal state. Both reads preserve SSR, frozen-range and jump compensation.
+    const visibleRange = deferBuffer ? store.$getRange(0) : undefined;
+    const fullRange = store.$getRange(bufferSize);
+    const admitted = (index: number) =>
+      !visibleRange ||
+      (visibleRange[0] <= index && index <= visibleRange[1]) ||
+      committedIndexes.current.has(index);
     if (keepMounted) {
       const mounted = new Set(keepMounted);
-      for (let [i, j] = store.$getRange(bufferSize); i <= j; i++) {
-        mounted.add(i);
+      for (let [i, j] = fullRange; i <= j; i++) {
+        if (admitted(i)) mounted.add(i);
       }
       for (const index of sort([...mounted])) {
         if (index < count) {
@@ -329,8 +377,8 @@ export const Virtualizer = /*#__PURE__*/ forwardRef<
         }
       }
     } else {
-      for (let [i, j] = store.$getRange(bufferSize); i <= j; i++) {
-        indexes.push(i);
+      for (let [i, j] = fullRange; i <= j; i++) {
+        if (admitted(i)) indexes.push(i);
       }
     }
     for (const index of indexes) {

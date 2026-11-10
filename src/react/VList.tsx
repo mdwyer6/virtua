@@ -21,6 +21,7 @@ export interface VListProps<T = unknown>
       | "children"
       | "data"
       | "bufferSize"
+      | "prioritizeVisible"
       | "itemSize"
       | "shift"
       | "horizontal"
@@ -43,6 +44,7 @@ export const VList = /*#__PURE__*/ forwardRef<VListHandle, VListProps>(
       children,
       data,
       bufferSize,
+      prioritizeVisible,
       itemSize,
       shift,
       horizontal,
@@ -74,6 +76,7 @@ export const VList = /*#__PURE__*/ forwardRef<VListHandle, VListProps>(
           ref={ref}
           data={data}
           bufferSize={bufferSize}
+          prioritizeVisible={prioritizeVisible}
           itemSize={itemSize}
           shift={shift}
           horizontal={horizontal}
