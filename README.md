@@ -569,7 +569,9 @@ If you find a problem, feel free to create an [issue](https://github.com/inokawa
 
 ## Experimental visible-item priority
 
-This local branch adds an opt-in `prioritizeVisible` prop to React `Virtualizer` and `VList`. With a concurrent React root, visible items and previously committed items update at the normal priority; newly needed buffer items are admitted with `React.startTransition`. Explicit `keepMounted` items remain urgent. The original behavior is the default, and is also retained when React does not provide transitions.
+This branch adds the experimental `prioritizeVisible` prop to React `Virtualizer` and `VList`. It defaults to `false`. When enabled, visible items and previously committed items update at the normal priority; newly needed buffer items are admitted with `React.startTransition`. Explicit `keepMounted` items remain urgent. React versions without transitions retain the original rendering behavior.
+
+**Enable this prop only under a concurrent-capable root created with `createRoot` or `hydrateRoot` from `react-dom/client`.** The caller is responsible for this requirement; Virtua does not detect the root type. Leave the prop disabled with legacy `ReactDOM.render` roots, even when `React.startTransition` is available.
 
 ```tsx
 <VList prioritizeVisible bufferSize={1200}>

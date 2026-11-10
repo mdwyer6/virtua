@@ -113,7 +113,11 @@ export interface VirtualizerProps<T = unknown> {
   /**
    * Experimental: commit visible items before mounting new buffer items during
    * scrolling. Existing mounted items and keepMounted items remain urgent.
-   * Uses React transitions; children should put expensive work in components.
+   * Only enable under a concurrent-capable root created with createRoot or
+   * hydrateRoot from react-dom/client. The caller is responsible for this
+   * requirement; root type is not detected. Leave disabled with legacy
+   * ReactDOM.render roots, even if React.startTransition is available.
+   * Children should put expensive work in components so rendering can yield.
    * @defaultValue false
    */
   prioritizeVisible?: boolean;
