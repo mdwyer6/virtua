@@ -357,23 +357,26 @@ export const Virtualizer = /*#__PURE__*/ forwardRef<
     // transition. An older grant cannot admit the buffer for a newer update.
     // ResizeObserver updates still run at their native priority and compute the
     // current visible range, including any newly exposed items.
-    const deferBuffer =
+    const shouldMountVisibleItemsOnly =
       prioritizeVisible &&
       isScrolling &&
       urgentVersion === stateVersion &&
       bufferVersion !== stateVersion;
     // Read the full range last to leave the store's previous-range cache in its
     // normal state. Both reads preserve SSR, frozen-range and jump compensation.
-    const visibleRange = deferBuffer ? store.$getRange(0) : undefined;
+    const visibleRange = shouldMountVisibleItemsOnly
+      ? store.$getRange(0)
+      : undefined;
     const fullRange = store.$getRange(bufferSize);
-    const admitted = (index: number) =>
+    const [visibleStart, visibleEnd] = visibleRange ?? fullRange;
+    const shouldRenderItem = (index: number) =>
       !visibleRange ||
-      (visibleRange[0] <= index && index <= visibleRange[1]) ||
+      (visibleStart <= index && index <= visibleEnd) ||
       committedIndexes.current.has(index);
     if (keepMounted) {
       const mounted = new Set(keepMounted);
       for (let [i, j] = fullRange; i <= j; i++) {
-        if (admitted(i)) mounted.add(i);
+        if (shouldRenderItem(i)) mounted.add(i);
       }
       for (const index of sort([...mounted])) {
         if (index < count) {
@@ -382,7 +385,7 @@ export const Virtualizer = /*#__PURE__*/ forwardRef<
       }
     } else {
       for (let [i, j] = fullRange; i <= j; i++) {
-        if (admitted(i)) indexes.push(i);
+        if (shouldRenderItem(i)) indexes.push(i);
       }
     }
     for (const index of indexes) {
